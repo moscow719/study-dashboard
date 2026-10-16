@@ -3,20 +3,10 @@ const ICONS = ["📘", "⚡", "💻", "🔬", "📊", "📚"];
 const COLORS = ["#7c4dff", "#ff9800", "#2f80ed", "#2fb67c", "#ec407a", "#f5b400", "#00acc1", "#ef5350"];
 
 const GROUPS = [
-  { key: "lectures", label: "🎥 Lectures", dateField: "date", dateLabel: "التاريخ", hasFile: true, prefix: "l" },
-  { key: "sheets", label: "📄 Sheets", dateField: "date", dateLabel: "التاريخ", hasFile: true, prefix: "sh" },
-  { key: "assignments", label: "📝 Assignments", dateField: "dueDate", dateLabel: "موعد التسليم", hasFile: true, prefix: "a" },
-  { key: "exams", label: "🧪 Exams", dateField: "examDate", dateLabel: "موعد الامتحان", hasFile: false, prefix: "e" },
-];
-
-const FILTERS = [
-  { key: "all", label: "الكل" },
-  { key: "lectures", label: "🎥 Lectures" },
-  { key: "sheets", label: "📄 Sheets" },
-  { key: "assignments", label: "📝 Assignments" },
-  { key: "exams", label: "🧪 Exams" },
-  { key: "completed", label: "✅ Completed" },
-  { key: "pending", label: "⏳ Pending" },
+  { key: "lectures", label: "🎥 Lectures", icon: "🎥", short: "محاضرات", single: "محاضرة", dateField: "date", dateLabel: "التاريخ", hasFile: true, prefix: "l" },
+  { key: "sheets", label: "📄 Sheets", icon: "📄", short: "Sheets", single: "Sheet", dateField: "date", dateLabel: "التاريخ", hasFile: true, prefix: "sh" },
+  { key: "assignments", label: "📝 Assignments", icon: "📝", short: "Assignments", single: "Assignment", dateField: "dueDate", dateLabel: "موعد التسليم", hasFile: true, prefix: "a" },
+  { key: "exams", label: "🧪 Exams", icon: "🧪", short: "Exams", single: "Exam", dateField: "examDate", dateLabel: "موعد الامتحان", hasFile: false, prefix: "e" },
 ];
 
 const STORAGE_KEY = "study-dashboard-v1";
@@ -25,7 +15,8 @@ let currentTermId = terms[0].id;
 let currentView = "home";
 let openSubjectId = null;
 let modalView = "closed";
-let modalFilter = "all";
+let modalTab = GROUPS[0].key;
+let modalStatus = "all";
 let editing = null;
 let editingSubjectId = null;
 
@@ -95,12 +86,11 @@ function calculateOverallProgress() {
   return percent(termSubjects().flatMap(allItems));
 }
 
-function filterCount(subject, key) {
-  const items = allItems(subject);
-  if (key === "all") return items.length;
-  if (key === "completed") return items.filter((i) => i.completed).length;
-  if (key === "pending") return items.filter((i) => !i.completed).length;
-  return subject[key].length;
+function defaultTab(subject) {
+  const withPending = GROUPS.find((g) => subject[g.key].some((i) => !i.completed));
+  if (withPending) return withPending.key;
+  const withItems = GROUPS.find((g) => subject[g.key].length);
+  return withItems ? withItems.key : GROUPS[0].key;
 }
 
 function daysUntil(dateStr) {
@@ -640,74 +630,104 @@ function itemHTML(item, group) {
   const ref = `${group.key}:${item.id}`;
   return `
     <div class="item ${item.completed ? "done" : ""}">
-      <input type="checkbox" data-toggle="${ref}" ${item.completed ? "checked" : ""} />
-      <div class="item-body">
-        <div class="item-title">${esc(item.title)}</div>
-        ${item.notes ? `<div class="item-sub">${esc(item.notes)}</div>` : ""}
-      </div>
+      <input type="checkbox" data-toggle="${ref}" ${item.completed ? "checked" : ""} aria-label="تم" />
+      <button type="button" class="item-main" data-edit="${ref}">
+        <span class="item-title">${esc(item.title)}</span>
+        ${item.notes ? `<span class="item-sub">${esc(item.notes)}</span>` : ""}
+      </button>
       ${info ? `<span class="pill ${info.cls}">${esc(info.text)}</span>` : ""}
-      <div class="item-actions">
-        <button class="mini-btn" data-edit="${ref}" aria-label="تعديل">✏️</button>
-        <button class="mini-btn" data-delete="${ref}" aria-label="حذف">🗑️</button>
-      </div>
+      <span class="item-go">‹</span>
     </div>`;
 }
 
 function listViewHTML() {
   const subject = currentSubject();
+  const group = groupByKey(modalTab);
+  const all = subject[group.key];
+  const visible = all.filter((i) => modalStatus === "all" || (modalStatus === "completed") === i.completed);
+  const total = allItems(subject).length;
+  const done = allItems(subject).filter((i) => i.completed).length;
+  const progress = calculateProgress(subject);
 
-  const chips = FILTERS.map(
-    (f) => `
-      <button class="chip ${f.key === modalFilter ? "active" : ""}" data-filter="${f.key}">
-        ${f.label}<small>${filterCount(subject, f.key)}</small>
+  const tabs = GROUPS.map(
+    (g) => `
+      <button class="tab ${g.key === modalTab ? "active" : ""}" data-tab="${g.key}">
+        <span class="tab-icon">${g.icon}</span>
+        <span class="tab-label">${g.short}</span>
+        <span class="tab-count">${subject[g.key].length}</span>
       </button>`
   ).join("");
 
-  const byStatus = modalFilter === "completed" || modalFilter === "pending";
-  const visible = GROUPS.filter((g) => modalFilter === "all" || byStatus || g.key === modalFilter);
+  const counts = {
+    all: all.length,
+    pending: all.filter((i) => !i.completed).length,
+    completed: all.filter((i) => i.completed).length,
+  };
 
-  let groupsHTML = visible
-    .map((group) => {
-      const items = byStatus
-        ? subject[group.key].filter((i) => (modalFilter === "completed") === i.completed)
-        : subject[group.key];
-      if (byStatus && !items.length) return "";
-      return `
-        <div class="group">
-          <h4>${group.label}</h4>
-          ${items.length ? items.map((i) => itemHTML(i, group)).join("") : `<div class="item-sub">لسه مفيش عناصر</div>`}
-        </div>`;
-    })
+  const statuses = [
+    ["all", "الكل"],
+    ["pending", "⏳ لسه"],
+    ["completed", "✅ خلصت"],
+  ]
+    .map(
+      ([key, label]) =>
+        `<button class="seg ${key === modalStatus ? "active" : ""}" data-status="${key}">${label} (${counts[key]})</button>`
+    )
     .join("");
 
-  if (!groupsHTML.trim()) {
-    groupsHTML = `<div class="group"><div class="item-sub">مفيش عناصر هنا</div></div>`;
+  const dateField =
+    group.dateField !== "date"
+      ? `<label class="quick-date"><span>${group.dateLabel}</span><input type="date" name="date" /></label>`
+      : "";
+
+  let body;
+  if (visible.length) {
+    body = `<div class="list-card">${visible.map((i) => itemHTML(i, group)).join("")}</div>`;
+  } else if (all.length) {
+    body = `<div class="list-card"><div class="empty-state">مفيش عناصر بالفلتر ده</div></div>`;
+  } else {
+    body = `
+      <div class="list-card">
+        <div class="empty-state">
+          <strong>لسه مفيش ${group.short}</strong>
+          اكتب الاسم في الخانة اللي فوق واضغط إضافة
+        </div>
+      </div>`;
   }
 
   return `
     <div class="modal-content">
       <div class="modal-head">
-        <div>
+        <div class="subject-title">
+          <span class="color-dot" style="background:${subject.color}"></span>
           <h2>${esc(subject.name)}</h2>
-          <p class="meta">${calculateProgress(subject)}% مكتمل</p>
         </div>
         <div class="head-actions">
           <button class="mini-btn big" data-edit-subject aria-label="تعديل المادة">✏️</button>
-          <button class="mini-btn big" data-delete-subject aria-label="حذف المادة">🗑️</button>
-          <button class="close-btn" data-close>✕</button>
+          <button class="close-btn" data-close aria-label="إغلاق">✕</button>
         </div>
       </div>
-      <div class="bar" style="--c:${subject.color}">
-        <span style="width:${calculateProgress(subject)}%"></span>
+
+      <div class="progress-line">
+        <div class="bar" style="--c:${subject.color}"><span style="width:${progress}%"></span></div>
+        <span class="meta">${done}/${total} • ${progress}%</span>
       </div>
-      <div class="filters">${chips}</div>
-      ${groupsHTML}
-      <button class="add-btn" data-add>+ Add Item</button>
+
+      <div class="tabs">${tabs}</div>
+      <div class="status-row">${statuses}</div>
+
+      <form class="quick-add" id="quickForm" autocomplete="off">
+        <input type="text" id="quickTitle" name="title" placeholder="اكتب اسم ${group.single} جديد..." />
+        <button type="submit">+ إضافة</button>
+        ${dateField}
+      </form>
+
+      ${body}
     </div>`;
 }
 
 function formViewHTML() {
-  const group = groupByKey(editing ? editing.groupKey : GROUPS[0].key);
+  const group = groupByKey(editing ? editing.groupKey : modalTab);
   const item = editing ? currentSubject()[group.key].find((i) => i.id === editing.itemId) : null;
   const options = GROUPS.map(
     (g) => `<option value="${g.key}" ${g.key === group.key ? "selected" : ""}>${g.label}</option>`
@@ -717,12 +737,12 @@ function formViewHTML() {
     <form class="modal-content" id="itemForm">
       <div class="modal-head">
         <h2>${editing ? "تعديل العنصر" : "إضافة عنصر جديد"}</h2>
-        <button type="button" class="close-btn" data-back>✕</button>
+        <button type="button" class="close-btn" data-back aria-label="رجوع">✕</button>
       </div>
 
       <label class="field">
         <span>النوع</span>
-        <select id="itemType" name="type" ${editing ? "disabled" : ""}>${options}</select>
+        <select name="type" disabled>${options}</select>
       </label>
 
       <label class="field">
@@ -731,7 +751,7 @@ function formViewHTML() {
       </label>
 
       <label class="field">
-        <span id="dateLabel">${group.dateLabel} (اختياري)</span>
+        <span>${group.dateLabel} (اختياري)</span>
         <input type="date" name="date" value="${item ? esc(item[group.dateField] || "") : ""}" />
       </label>
 
@@ -744,6 +764,12 @@ function formViewHTML() {
         <button type="submit" class="add-btn">حفظ</button>
         <button type="button" class="ghost-btn" data-back>إلغاء</button>
       </div>
+
+      ${
+        editing
+          ? `<button type="button" class="danger-btn" data-delete="${editing.groupKey}:${editing.itemId}">🗑️ حذف العنصر</button>`
+          : ""
+      }
     </form>`;
 }
 
@@ -771,7 +797,7 @@ function subjectFormHTML() {
     <form class="modal-content" id="subjectForm">
       <div class="modal-head">
         <h2>${subject ? "تعديل المادة" : "إضافة مادة جديدة"}</h2>
-        <button type="button" class="close-btn" data-back>✕</button>
+        <button type="button" class="close-btn" data-back aria-label="رجوع">✕</button>
       </div>
 
       <label class="field">
@@ -793,17 +819,28 @@ function subjectFormHTML() {
         <button type="submit" class="add-btn">حفظ</button>
         <button type="button" class="ghost-btn" data-back>إلغاء</button>
       </div>
+
+      ${subject ? `<button type="button" class="danger-btn" data-delete-subject>🗑️ حذف المادة</button>` : ""}
     </form>`;
 }
 
 function renderModal() {
+  const box = $("subjectModal");
+  const prev = box.querySelector(".modal-content");
+  const top = prev ? prev.scrollTop : 0;
+  const keepScroll = box.dataset.view === modalView;
+
   if (modalView === "subjectForm") {
-    $("subjectModal").innerHTML = subjectFormHTML();
+    box.innerHTML = subjectFormHTML();
   } else if (modalView === "form") {
-    $("subjectModal").innerHTML = formViewHTML();
+    box.innerHTML = formViewHTML();
   } else {
-    $("subjectModal").innerHTML = listViewHTML();
+    box.innerHTML = listViewHTML();
   }
+
+  box.dataset.view = modalView;
+  const next = box.querySelector(".modal-content");
+  if (next && keepScroll) next.scrollTop = top;
 }
 
 function renderAll() {
@@ -818,14 +855,23 @@ function renderAll() {
 }
 
 function showModal(view) {
+  const box = $("subjectModal");
+  const wasHidden = box.classList.contains("hidden");
   modalView = view;
   renderModal();
-  $("subjectModal").classList.remove("hidden");
+  box.classList.remove("hidden");
+  if (wasHidden) {
+    box.classList.add("opening");
+    setTimeout(() => box.classList.remove("opening"), 300);
+  }
 }
 
 function openSubject(id) {
+  const subject = subjects.find((s) => s.id === id);
+  if (!subject) return;
   openSubjectId = id;
-  modalFilter = "all";
+  modalTab = defaultTab(subject);
+  modalStatus = "all";
   editing = null;
   editingSubjectId = null;
   showModal("list");
@@ -834,9 +880,10 @@ function openSubject(id) {
 function closeModal() {
   openSubjectId = null;
   modalView = "closed";
-  modalFilter = "all";
+  modalStatus = "all";
   editing = null;
   editingSubjectId = null;
+  $("subjectModal").dataset.view = "";
   $("subjectModal").classList.add("hidden");
 }
 
@@ -895,9 +942,16 @@ document.addEventListener("click", (e) => {
     return renderAll();
   }
 
-  const filterBtn = e.target.closest("[data-filter]");
-  if (filterBtn) {
-    modalFilter = filterBtn.dataset.filter;
+  const tabBtn = e.target.closest("[data-tab]");
+  if (tabBtn) {
+    modalTab = tabBtn.dataset.tab;
+    modalStatus = "all";
+    return renderModal();
+  }
+
+  const statusBtn = e.target.closest("[data-status]");
+  if (statusBtn) {
+    modalStatus = statusBtn.dataset.status;
     return renderModal();
   }
 
@@ -933,12 +987,9 @@ document.addEventListener("click", (e) => {
     if (!confirm("متأكد إنك عايز تمسح العنصر ده؟")) return;
     const { groupKey, itemId } = parseRef(deleteBtn.dataset.delete);
     deleteItem(groupKey, itemId);
-    return renderAll();
-  }
-
-  if (e.target.closest("[data-add]")) {
     editing = null;
-    return showModal("form");
+    modalView = "list";
+    return renderAll();
   }
 
   if (e.target.closest("[data-back]")) {
@@ -977,11 +1028,6 @@ document.addEventListener("change", (e) => {
     return;
   }
 
-  if (e.target.id === "itemType") {
-    $("dateLabel").textContent = groupByKey(e.target.value).dateLabel + " (اختياري)";
-    return;
-  }
-
   const value = e.target.dataset.toggle;
   if (!value) return;
   const { groupKey, itemId } = parseRef(value);
@@ -990,6 +1036,19 @@ document.addEventListener("change", (e) => {
 });
 
 document.addEventListener("submit", (e) => {
+  if (e.target.id === "quickForm") {
+    e.preventDefault();
+    const form = new FormData(e.target);
+    const title = String(form.get("title") || "").trim();
+    if (!title) return;
+    addSubjectItem(modalTab, { title, date: String(form.get("date") || ""), notes: "" });
+    modalStatus = "all";
+    renderAll();
+    const input = $("quickTitle");
+    if (input) input.focus();
+    return;
+  }
+
   if (e.target.id === "subjectForm") {
     e.preventDefault();
     const form = new FormData(e.target);
@@ -1037,11 +1096,11 @@ document.addEventListener("submit", (e) => {
   if (editing) {
     editItem(editing.groupKey, editing.itemId, data);
   } else {
-    addSubjectItem(String(form.get("type")), data);
+    addSubjectItem(modalTab, data);
   }
 
   editing = null;
-  modalFilter = "all";
+  modalStatus = "all";
   modalView = "list";
   renderAll();
 });
