@@ -272,6 +272,95 @@ function toggleComplete(groupKey, itemId) {
   saveData();
 }
 
+function backupData() {
+  const payload = { app: "study-dashboard", version: 1, termId: currentTermId, subjects };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `study-dashboard-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function safeId(value) {
+  return typeof value === "string" && /^[\w-]+$/.test(value);
+}
+
+function normalizeSubject(raw) {
+  if (!raw || !safeId(raw.id) || typeof raw.name !== "string") return null;
+  if (!terms.some((t) => t.id === raw.termId)) return null;
+
+  const subject = {
+    id: raw.id,
+    termId: raw.termId,
+    name: raw.name,
+    color: /^#[0-9a-fA-F]{6}$/.test(raw.color) ? raw.color : COLORS[0],
+  };
+
+  GROUPS.forEach((group) => {
+    const list = Array.isArray(raw[group.key]) ? raw[group.key] : [];
+    subject[group.key] = list
+      .filter((i) => i && safeId(i.id) && typeof i.title === "string")
+      .map((i) => {
+        const item = {
+          id: i.id,
+          title: i.title,
+          completed: Boolean(i.completed),
+          notes: typeof i.notes === "string" ? i.notes : "",
+        };
+        item[group.dateField] = /^\d{4}-\d{2}-\d{2}$/.test(i[group.dateField]) ? i[group.dateField] : "";
+        if (group.hasFile) item.fileUrl = "";
+        return item;
+      });
+  });
+
+  return subject;
+}
+
+function restoreData(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (!data || !Array.isArray(data.subjects)) throw new Error("invalid");
+      const list = data.subjects.map(normalizeSubject);
+      if (list.some((s) => !s)) throw new Error("invalid");
+      if (!confirm("هيتم استبدال بياناتك الحالية بالنسخة الاحتياطية. متأكد؟")) return;
+      subjects.splice(0, subjects.length, ...list);
+      if (terms.some((t) => t.id === data.termId)) currentTermId = data.termId;
+      closeModal();
+      saveData();
+      renderAll();
+      alert("تم استرجاع البيانات ✅");
+    } catch (error) {
+      alert("الملف مش صالح. اتأكد إنه نسخة احتياطية طالعة من الموقع.");
+    }
+  };
+  reader.readAsText(file);
+}
+
+function resetData() {
+  if (!confirm("هتمسح كل بياناتك من المتصفح وترجع للمواد الأصلية. متأكد؟")) return;
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch (error) {}
+  location.reload();
+}
+
+function openDrawer() {
+  hideNotif();
+  $("drawer").classList.add("open");
+  $("backdrop").classList.remove("hidden");
+}
+
+function closeDrawer() {
+  $("drawer").classList.remove("open");
+  $("backdrop").classList.add("hidden");
+}
+
 function renderTerms() {
   $("termSwitch").innerHTML = terms
     .map(
@@ -357,10 +446,44 @@ function renderUpcoming() {
   $("upcomingList").innerHTML = html;
 }
 
+function notifItems() {
+  return getUpcoming().filter((u) => daysUntil(u.date) <= 1);
+}
+
 function renderBadge() {
-  const count = getUpcoming().filter((u) => daysUntil(u.date) <= 1).length;
+  const count = notifItems().length;
   $("notifBadge").textContent = count;
   $("notifBadge").classList.toggle("hidden", count === 0);
+}
+
+function renderNotif() {
+  const list = notifItems();
+  const overdue = list.filter((u) => daysUntil(u.date) < 0);
+  const soon = list.filter((u) => daysUntil(u.date) >= 0);
+
+  let html = `<div class="notif-title">🔔 التنبيهات</div>`;
+  if (!list.length) {
+    html += `<div class="empty">مفيش تنبيهات 🎉</div>`;
+  }
+  if (overdue.length) {
+    html += `<div class="list-label late">⚠️ متأخر</div>` + overdue.map(upcomingRowHTML).join("");
+  }
+  if (soon.length) {
+    html += `<div class="list-label">⏰ النهاردة وبكرة</div>` + soon.map(upcomingRowHTML).join("");
+  }
+  $("notifPanel").innerHTML = html;
+}
+
+function hideNotif() {
+  $("notifPanel").classList.add("hidden");
+}
+
+function toggleNotif() {
+  const willOpen = $("notifPanel").classList.contains("hidden");
+  if (!willOpen) return hideNotif();
+  closeDrawer();
+  renderNotif();
+  $("notifPanel").classList.remove("hidden");
 }
 
 function statCardHTML(value, label, cls) {
@@ -689,6 +812,7 @@ function renderAll() {
   renderSubjects();
   renderUpcoming();
   renderBadge();
+  if (!$("notifPanel").classList.contains("hidden")) renderNotif();
   if (currentView === "stats") renderStats();
   if (modalView !== "closed") renderModal();
 }
@@ -724,9 +848,27 @@ function parseRef(value) {
 document.addEventListener("click", (e) => {
   if (!e.target.closest(".search")) hideSearch();
 
+  if (e.target.closest("#bellBtn")) return toggleNotif();
+  if (!e.target.closest("#notifPanel") || e.target.closest("[data-subject]")) hideNotif();
+
+  if (e.target.closest("#menuBtn")) return openDrawer();
+  if (e.target.closest("[data-drawer-close]") || e.target.id === "backdrop") return closeDrawer();
+
+  const actionBtn = e.target.closest("[data-action]");
+  if (actionBtn) {
+    closeDrawer();
+    const action = actionBtn.dataset.action;
+    if (action === "backup") return backupData();
+    if (action === "restore") return $("restoreInput").click();
+    if (action === "reset") return resetData();
+    return;
+  }
+
   const navBtn = e.target.closest("[data-nav]");
   if (navBtn) {
     const nav = navBtn.dataset.nav;
+    closeDrawer();
+    if (nav === "more") return openDrawer();
     if (nav === "stats") return setView("stats");
     setView("home");
     if (nav === "upcoming") {
@@ -821,11 +963,20 @@ document.addEventListener("focusin", (e) => {
 
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
+  if ($("drawer").classList.contains("open")) return closeDrawer();
+  if (!$("notifPanel").classList.contains("hidden")) return hideNotif();
   if (!searchPanel.classList.contains("hidden")) return hideSearch();
   if (modalView === "list") closeModal();
 });
 
 document.addEventListener("change", (e) => {
+  if (e.target.id === "restoreInput") {
+    const file = e.target.files[0];
+    if (file) restoreData(file);
+    e.target.value = "";
+    return;
+  }
+
   if (e.target.id === "itemType") {
     $("dateLabel").textContent = groupByKey(e.target.value).dateLabel + " (اختياري)";
     return;

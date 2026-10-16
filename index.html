@@ -4,371 +4,101 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#5b3fd1" />
-
   <title>Study Dashboard</title>
-
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link
-    href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap"
-    rel="stylesheet"
-  />
-
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
-
 <body>
   <div class="app">
-
-    <!-- =========================
-         HEADER
-    ========================== -->
     <header class="hero">
       <div class="hero-top">
-
-        <button
-          class="icon-btn"
-          id="menuBtn"
-          type="button"
-          aria-label="فتح القائمة"
-          aria-controls="moreView"
-          aria-expanded="false"
-          data-action="menu"
-        >
-          ☰
-        </button>
-
+        <button class="icon-btn" id="menuBtn" aria-label="القائمة">☰</button>
         <div class="hero-text">
           <h1>Study Dashboard</h1>
           <p class="hello">أهلاً، Fathi 👋</p>
           <p class="sub">يلا نذاكر النهاردة!</p>
         </div>
-
-        <button
-          class="icon-btn bell"
-          id="bellBtn"
-          type="button"
-          aria-label="التنبيهات"
-          aria-controls="notificationPanel"
-          aria-expanded="false"
-          data-action="notifications"
-        >
+        <button class="icon-btn bell" id="bellBtn" aria-label="التنبيهات">
           🔔
-          <span
-            class="notif-badge hidden"
-            id="notifBadge"
-            aria-label="عدد التنبيهات"
-          >
-            0
-          </span>
+          <span class="notif-badge hidden" id="notifBadge">0</span>
         </button>
-
-        <div class="avatar" aria-label="Fathi">F</div>
+        <div class="avatar">F</div>
       </div>
 
-      <!-- Search -->
-      <div class="search" role="search">
-        <span class="search-icon" aria-hidden="true">🔍</span>
+      <div class="notif-panel hidden" id="notifPanel"></div>
 
-        <input
-          id="searchInput"
-          type="search"
-          autocomplete="off"
-          placeholder="ابحث عن مادة أو محاضرة أو شيت أو Assignment أو Exam..."
-          aria-label="البحث"
-        />
+      <div class="search">
+        <span class="search-icon">🔍</span>
+        <input id="searchInput" type="search" placeholder="ابحث عن محاضرة أو شيت أو امتحان..." />
       </div>
     </header>
 
-
-    <!-- =========================
-         NOTIFICATION PANEL
-    ========================== -->
-    <div
-      class="notification-panel hidden"
-      id="notificationPanel"
-      role="region"
-      aria-label="التنبيهات"
-    ></div>
-
-
-    <!-- =========================
-         MAIN CONTENT
-    ========================== -->
-
-    <!-- HOME VIEW -->
     <main id="homeView">
-
-      <!-- Terms -->
       <div class="term-switch" id="termSwitch"></div>
 
-      <!-- Overall Progress -->
       <section class="overall">
         <div class="overall-head">
           <span>Overall Progress</span>
           <strong id="overallText">0%</strong>
         </div>
-
-        <div
-          class="bar"
-          role="progressbar"
-          aria-label="التقدم الكلي"
-          aria-valuemin="0"
-          aria-valuemax="100"
-          aria-valuenow="0"
-          id="overallProgressBar"
-        >
-          <span id="overallBar"></span>
-        </div>
+        <div class="bar"><span id="overallBar"></span></div>
       </section>
 
-
-      <!-- Subjects -->
       <section class="subjects-section">
         <div class="section-head">
           <h2>موادي</h2>
           <span class="link" id="termLabel"></span>
         </div>
-
         <div class="grid" id="subjectGrid"></div>
       </section>
 
-
-      <!-- Upcoming Preview -->
       <section class="upcoming-section">
-
         <div class="section-head">
           <h2>المواعيد القادمة</h2>
-
-          <button
-            class="link link-btn"
-            type="button"
-            id="showAllUpcomingBtn"
-            data-action="upcoming"
-          >
-            عرض الكل
-          </button>
+          <span class="link">عرض الكل</span>
         </div>
-
         <div class="card" id="upcomingList"></div>
       </section>
-
     </main>
 
+    <main id="statsView" class="stats-view hidden"></main>
 
-    <!-- =========================
-         UPCOMING VIEW
-    ========================== -->
-    <main
-      id="upcomingView"
-      class="upcoming-view hidden"
-      aria-label="المواعيد"
-    >
-      <div class="page-head">
-        <button
-          class="back-page-btn"
-          type="button"
-          data-action="home"
-          aria-label="العودة للرئيسية"
-        >
-          →
-        </button>
-
-        <div>
-          <h2>المواعيد</h2>
-          <p>كل المحاضرات والشيتات والتكليفات والامتحانات القادمة</p>
-        </div>
-      </div>
-
-      <div class="term-switch" id="upcomingTermSwitch"></div>
-
-      <section class="card">
-        <div id="allUpcomingList"></div>
-      </section>
-    </main>
-
-
-    <!-- =========================
-         STATS VIEW
-    ========================== -->
-    <main
-      id="statsView"
-      class="stats-view hidden"
-      aria-label="الإحصائيات"
-    ></main>
-
-
-    <!-- =========================
-         MORE VIEW
-    ========================== -->
-    <main
-      id="moreView"
-      class="more-view hidden"
-      aria-label="المزيد"
-    >
-      <div class="page-head">
-        <button
-          class="back-page-btn"
-          type="button"
-          data-action="home"
-          aria-label="العودة للرئيسية"
-        >
-          →
-        </button>
-
-        <div>
-          <h2>المزيد</h2>
-          <p>إدارة لوحة المذاكرة والبيانات</p>
-        </div>
-      </div>
-
-      <section class="more-menu">
-
-        <button
-          class="more-item"
-          type="button"
-          data-action="export"
-        >
-          <span class="more-icon">📦</span>
-
-          <span class="more-body">
-            <strong>تصدير البيانات</strong>
-            <small>حفظ نسخة من بيانات المذاكرة على جهازك</small>
-          </span>
-
-          <span class="more-arrow">‹</span>
-        </button>
-
-
-        <button
-          class="more-item"
-          type="button"
-          data-action="import"
-        >
-          <span class="more-icon">📥</span>
-
-          <span class="more-body">
-            <strong>استيراد البيانات</strong>
-            <small>استرجاع نسخة محفوظة من بياناتك</small>
-          </span>
-
-          <span class="more-arrow">‹</span>
-        </button>
-
-
-        <button
-          class="more-item"
-          type="button"
-          data-action="reset"
-        >
-          <span class="more-icon">🗑️</span>
-
-          <span class="more-body">
-            <strong>إعادة ضبط البيانات</strong>
-            <small>حذف بيانات المذاكرة المحفوظة على الجهاز</small>
-          </span>
-
-          <span class="more-arrow">‹</span>
-        </button>
-
-
-        <div class="more-item static">
-          <span class="more-icon">ℹ️</span>
-
-          <span class="more-body">
-            <strong>Study Dashboard</strong>
-            <small>نسخة محلية من لوحة متابعة المذاكرة</small>
-          </span>
-        </div>
-
-      </section>
-    </main>
-
-
-    <!-- =========================
-         BOTTOM NAVIGATION
-    ========================== -->
-    <nav
-      class="bottom-nav"
-      aria-label="التنقل الرئيسي"
-    >
-
-      <button
-        class="nav-btn active"
-        type="button"
-        data-nav="home"
-        aria-label="الرئيسية"
-      >
-        <span aria-hidden="true">🏠</span>
-        الرئيسية
-      </button>
-
-
-      <button
-        class="nav-btn"
-        type="button"
-        data-nav="upcoming"
-        aria-label="المواعيد"
-      >
-        <span aria-hidden="true">🗓️</span>
-        المواعيد
-      </button>
-
-
-      <button
-        class="nav-btn"
-        type="button"
-        data-nav="stats"
-        aria-label="الإحصائيات"
-      >
-        <span aria-hidden="true">📊</span>
-        الإحصائيات
-      </button>
-
-
-      <button
-        class="nav-btn"
-        type="button"
-        data-nav="more"
-        aria-label="المزيد"
-      >
-        <span aria-hidden="true">⋯</span>
-        المزيد
-      </button>
-
+    <nav class="bottom-nav">
+      <button class="nav-btn active" data-nav="home"><span>🏠</span>الرئيسية</button>
+      <button class="nav-btn" data-nav="upcoming"><span>🗓️</span>المواعيد</button>
+      <button class="nav-btn" data-nav="stats"><span>📊</span>الإحصائيات</button>
+      <button class="nav-btn" data-nav="more"><span>⋯</span>المزيد</button>
     </nav>
-
   </div>
 
+  <div class="modal hidden" id="subjectModal"></div>
 
-  <!-- =========================
-       SUBJECT MODAL
-  ========================== -->
-  <div
-    class="modal hidden"
-    id="subjectModal"
-    role="dialog"
-    aria-modal="true"
-    aria-label="إدارة المادة"
-  ></div>
+  <div class="backdrop hidden" id="backdrop"></div>
+  <aside class="drawer" id="drawer">
+    <div class="drawer-head">
+      <div class="avatar small">F</div>
+      <div class="drawer-user">
+        <strong>Fathi</strong>
+        <small>Study Dashboard</small>
+      </div>
+      <button class="close-btn" data-drawer-close aria-label="إغلاق">✕</button>
+    </div>
+    <div class="drawer-nav">
+      <button class="drawer-item" data-nav="home"><span>🏠</span>الرئيسية</button>
+      <button class="drawer-item" data-nav="upcoming"><span>🗓️</span>المواعيد</button>
+      <button class="drawer-item" data-nav="stats"><span>📊</span>الإحصائيات</button>
+      <div class="drawer-sep"></div>
+      <button class="drawer-item" data-action="backup"><span>⬇️</span>نسخ احتياطي للبيانات</button>
+      <button class="drawer-item" data-action="restore"><span>⬆️</span>استرجاع من نسخة احتياطية</button>
+      <div class="drawer-sep"></div>
+      <button class="drawer-item danger" data-action="reset"><span>🗑️</span>مسح كل البيانات</button>
+    </div>
+  </aside>
 
+  <input type="file" id="restoreInput" accept=".json,application/json" class="hidden" />
 
-  <!-- =========================
-       IMPORT FILE INPUT
-       Hidden — controlled by JS
-  ========================== -->
-  <input
-    type="file"
-    id="importFileInput"
-    accept="application/json,.json"
-    hidden
-  />
-
-
-  <!-- =========================
-       SCRIPTS
-  ========================== -->
   <script src="js/data.js"></script>
   <script src="js/app.js"></script>
-
 </body>
 </html>

@@ -110,6 +110,7 @@ button {
   font-size: 1.5rem;
   cursor: pointer;
   position: relative;
+  padding: 4px;
 }
 
 .notif-badge {
@@ -140,6 +141,32 @@ button {
   font-size: 1.5rem;
   border: 3px solid rgba(255, 255, 255, 0.5);
   flex-shrink: 0;
+}
+
+.avatar.small {
+  width: 48px;
+  height: 48px;
+  font-size: 1.3rem;
+}
+
+.notif-panel {
+  position: absolute;
+  top: 96px;
+  left: 16px;
+  width: min(380px, calc(100% - 32px));
+  max-height: 60vh;
+  overflow-y: auto;
+  background: #fff;
+  color: var(--text);
+  border-radius: var(--radius);
+  padding: 6px 14px 10px;
+  box-shadow: 0 16px 36px rgba(40, 30, 90, 0.28);
+  z-index: 20;
+}
+
+.notif-title {
+  font-weight: 700;
+  padding: 10px 0 2px;
 }
 
 .search {
@@ -656,6 +683,97 @@ section {
   color: var(--purple);
 }
 
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 15, 40, 0.5);
+  z-index: 29;
+}
+
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(320px, 85vw);
+  background: var(--bg);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(105%);
+  visibility: hidden;
+  transition: transform 0.25s ease, visibility 0.25s;
+  box-shadow: -10px 0 30px rgba(20, 15, 40, 0.25);
+}
+
+.drawer.open {
+  transform: none;
+  visibility: visible;
+}
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 18px 20px;
+  background: linear-gradient(135deg, #4a2fc0, #7c4dff);
+  color: #fff;
+  border-radius: 0 0 28px 28px;
+}
+
+.drawer-user {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.drawer-user small {
+  opacity: 0.8;
+}
+
+.drawer-nav {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+
+.drawer-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 14px;
+  border-radius: 14px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  text-align: start;
+}
+
+.drawer-item span {
+  font-size: 1.3rem;
+}
+
+.drawer-item:hover {
+  background: var(--card);
+}
+
+.drawer-item.danger {
+  color: var(--bad);
+}
+
+.drawer-sep {
+  height: 1px;
+  background: var(--line);
+  margin: 8px 6px;
+}
+
 .modal {
   position: fixed;
   inset: 0;
@@ -709,6 +827,7 @@ section {
   border-radius: 50%;
   font-size: 1rem;
   cursor: pointer;
+  color: var(--text);
 }
 
 .filters {
@@ -991,6 +1110,17 @@ section {
     font-size: 1.7rem;
   }
 
+  .avatar.small {
+    width: 48px;
+    height: 48px;
+    font-size: 1.3rem;
+  }
+
+  .notif-panel {
+    top: 110px;
+    left: 32px;
+  }
+
   .search {
     height: 56px;
     bottom: -28px;
@@ -1049,6 +1179,11 @@ section {
     margin-top: 20px;
     border-radius: 36px;
     padding: 40px 40px 88px;
+  }
+
+  .notif-panel {
+    top: 120px;
+    left: 40px;
   }
 
   #homeView {
