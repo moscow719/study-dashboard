@@ -1,0 +1,899 @@
+const ICONS = ["📘", "⚡", "💻", "🔬", "📊", "📚"];
+
+const COLORS = ["#7c4dff", "#ff9800", "#2f80ed", "#2fb67c", "#ec407a", "#f5b400", "#00acc1", "#ef5350"];
+
+const GROUPS = [
+  { key: "lectures", label: "🎥 Lectures", dateField: "date", dateLabel: "التاريخ", hasFile: true, prefix: "l" },
+  { key: "sheets", label: "📄 Sheets", dateField: "date", dateLabel: "التاريخ", hasFile: true, prefix: "sh" },
+  { key: "assignments", label: "📝 Assignments", dateField: "dueDate", dateLabel: "موعد التسليم", hasFile: true, prefix: "a" },
+  { key: "exams", label: "🧪 Exams", dateField: "examDate", dateLabel: "موعد الامتحان", hasFile: false, prefix: "e" },
+];
+
+const FILTERS = [
+  { key: "all", label: "الكل" },
+  { key: "lectures", label: "🎥 Lectures" },
+  { key: "sheets", label: "📄 Sheets" },
+  { key: "assignments", label: "📝 Assignments" },
+  { key: "exams", label: "🧪 Exams" },
+  { key: "completed", label: "✅ Completed" },
+  { key: "pending", label: "⏳ Pending" },
+];
+
+const STORAGE_KEY = "study-dashboard-v1";
+
+let currentTermId = terms[0].id;
+let currentView = "home";
+let openSubjectId = null;
+let modalView = "closed";
+let modalFilter = "all";
+let editing = null;
+let editingSubjectId = null;
+
+const $ = (id) => document.getElementById(id);
+
+const searchPanel = document.createElement("div");
+searchPanel.className = "search-results hidden";
+document.querySelector(".search").appendChild(searchPanel);
+
+function saveData() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ subjects, termId: currentTermId }));
+  } catch (error) {}
+}
+
+function loadData() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (saved && Array.isArray(saved.subjects)) {
+      subjects.splice(0, subjects.length, ...saved.subjects);
+      if (terms.some((t) => t.id === saved.termId)) currentTermId = saved.termId;
+    }
+  } catch (error) {}
+}
+
+function esc(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[c]));
+}
+
+function groupByKey(key) {
+  return GROUPS.find((g) => g.key === key);
+}
+
+function termName(termId) {
+  const term = terms.find((t) => t.id === termId);
+  return term ? term.name : "";
+}
+
+function currentSubject() {
+  return subjects.find((s) => s.id === openSubjectId);
+}
+
+function allItems(subject) {
+  return GROUPS.flatMap((g) => subject[g.key]);
+}
+
+function percent(list) {
+  if (!list.length) return 0;
+  return Math.round((list.filter((i) => i.completed).length / list.length) * 100);
+}
+
+function calculateProgress(subject) {
+  return percent(allItems(subject));
+}
+
+function termSubjects() {
+  return subjects.filter((s) => s.termId === currentTermId);
+}
+
+function calculateOverallProgress() {
+  return percent(termSubjects().flatMap(allItems));
+}
+
+function filterCount(subject, key) {
+  const items = allItems(subject);
+  if (key === "all") return items.length;
+  if (key === "completed") return items.filter((i) => i.completed).length;
+  if (key === "pending") return items.filter((i) => !i.completed).length;
+  return subject[key].length;
+}
+
+function daysUntil(dateStr) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(dateStr + "T00:00:00");
+  return Math.round((due - today) / 86400000);
+}
+
+function formatDate(dateStr, options) {
+  return new Date(dateStr + "T00:00:00").toLocaleDateString("ar-EG", options);
+}
+
+function dueInfo(dateStr) {
+  const d = daysUntil(dateStr);
+  if (d < 0) return { text: `متأخر ${-d} يوم`, cls: "late" };
+  if (d === 0) return { text: "النهاردة", cls: "soon" };
+  if (d === 1) return { text: "بكرة", cls: "soon" };
+  if (d <= 3) return { text: `بعد ${d} أيام`, cls: "soon" };
+  return { text: formatDate(dateStr, { day: "numeric", month: "long" }), cls: "" };
+}
+
+function getUpcoming() {
+  const list = [];
+  termSubjects().forEach((subject) => {
+    GROUPS.forEach((group) => {
+      subject[group.key].forEach((item) => {
+        const date = item[group.dateField];
+        if (date && !item.completed) {
+          list.push({ item, group, subject, date });
+        }
+      });
+    });
+  });
+  return list.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function computeStats() {
+  const list = termSubjects();
+  const items = list.flatMap(allItems);
+  const completed = items.filter((i) => i.completed).length;
+  const overdue = getUpcoming().filter((u) => daysUntil(u.date) < 0);
+
+  const perSubject = list.map((subject) => ({
+    subject,
+    total: allItems(subject).length,
+    progress: calculateProgress(subject),
+    overdue: overdue.filter((u) => u.subject.id === subject.id).length,
+  }));
+
+  const withItems = perSubject.filter((s) => s.total > 0);
+
+  let best = null;
+  withItems.forEach((s) => {
+    if (!best || s.progress > best.progress) best = s;
+  });
+
+  let mostLate = null;
+  perSubject.forEach((s) => {
+    if (s.overdue > 0 && (!mostLate || s.overdue > mostLate.overdue)) mostLate = s;
+  });
+
+  const done = (key) => list.flatMap((s) => s[key]).filter((i) => i.completed).length;
+  const total = (key) => list.flatMap((s) => s[key]).length;
+
+  const upcomingExams = list
+    .flatMap((s) => s.exams)
+    .filter((e) => e.examDate && !e.completed && daysUntil(e.examDate) >= 0).length;
+
+  return {
+    overall: percent(items),
+    completed,
+    pending: items.length - completed,
+    overdue: overdue.length,
+    perSubject,
+    best,
+    mostLate,
+    lectures: { done: done("lectures"), total: total("lectures") },
+    sheets: { done: done("sheets"), total: total("sheets") },
+    assignments: { done: done("assignments"), total: total("assignments") },
+    upcomingExams,
+  };
+}
+
+function searchAll(query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const results = [];
+  subjects.forEach((subject) => {
+    if (subject.name.toLowerCase().includes(q)) {
+      results.push({ kind: "subject", subject });
+    }
+    GROUPS.forEach((group) => {
+      subject[group.key].forEach((item) => {
+        const text = `${item.title} ${item.notes || ""}`.toLowerCase();
+        if (text.includes(q)) {
+          results.push({ kind: "item", subject, group, item });
+        }
+      });
+    });
+  });
+  return results.slice(0, 12);
+}
+
+function addSubject(data) {
+  subjects.push({
+    id: "sub" + Date.now(),
+    termId: data.termId,
+    name: data.name,
+    color: data.color,
+    lectures: [],
+    sheets: [],
+    assignments: [],
+    exams: [],
+  });
+  saveData();
+}
+
+function editSubject(id, data) {
+  const subject = subjects.find((s) => s.id === id);
+  if (!subject) return;
+  subject.name = data.name;
+  subject.color = data.color;
+  subject.termId = data.termId;
+  saveData();
+}
+
+function deleteSubject(id) {
+  const index = subjects.findIndex((s) => s.id === id);
+  if (index === -1) return;
+  subjects.splice(index, 1);
+  saveData();
+}
+
+function addSubjectItem(groupKey, data) {
+  const group = groupByKey(groupKey);
+  const item = {
+    id: group.prefix + Date.now(),
+    title: data.title,
+    completed: false,
+    notes: data.notes,
+  };
+  item[group.dateField] = data.date;
+  if (group.hasFile) item.fileUrl = "";
+  currentSubject()[groupKey].push(item);
+  saveData();
+}
+
+function editItem(groupKey, itemId, data) {
+  const group = groupByKey(groupKey);
+  const item = currentSubject()[groupKey].find((i) => i.id === itemId);
+  if (!item) return;
+  item.title = data.title;
+  item[group.dateField] = data.date;
+  item.notes = data.notes;
+  saveData();
+}
+
+function deleteItem(groupKey, itemId) {
+  const subject = currentSubject();
+  subject[groupKey] = subject[groupKey].filter((i) => i.id !== itemId);
+  saveData();
+}
+
+function toggleComplete(groupKey, itemId) {
+  const item = currentSubject()[groupKey].find((i) => i.id === itemId);
+  if (!item) return;
+  item.completed = !item.completed;
+  saveData();
+}
+
+function renderTerms() {
+  $("termSwitch").innerHTML = terms
+    .map(
+      (t) =>
+        `<button class="term-btn ${t.id === currentTermId ? "active" : ""}" data-term="${t.id}">${esc(t.name)}</button>`
+    )
+    .join("");
+  $("termLabel").textContent = termName(currentTermId);
+}
+
+function renderOverall() {
+  const p = calculateOverallProgress();
+  $("overallText").textContent = p + "%";
+  $("overallBar").style.width = p + "%";
+}
+
+function renderSubjects() {
+  const list = termSubjects();
+
+  const cards = list
+    .map((s) => {
+      const items = allItems(s);
+      const done = items.filter((i) => i.completed).length;
+      const icon = ICONS[subjects.indexOf(s) % ICONS.length];
+      return `
+        <div class="subject-card" style="--c:${s.color}" data-subject="${s.id}">
+          <div class="subject-icon">${icon}</div>
+          <h3>${esc(s.name)}</h3>
+          <div class="card-foot">
+            <span class="meta">${done}/${items.length}</span>
+            <span class="chevron">‹</span>
+          </div>
+          <div class="bar"><span style="width:${calculateProgress(s)}%"></span></div>
+        </div>`;
+    })
+    .join("");
+
+  const addCard = `
+    <div class="subject-card add-card" data-add-subject>
+      <div class="subject-icon">+</div>
+      <h3>إضافة مادة</h3>
+    </div>`;
+
+  const empty = list.length ? "" : `<div class="empty">مفيش مواد في الترم ده لسه</div>`;
+
+  $("subjectGrid").innerHTML = empty + cards + addCard;
+}
+
+function upcomingRowHTML({ item, group, subject, date }) {
+  const info = dueInfo(date);
+  return `
+    <div class="up-item" style="--c:${subject.color}" data-subject="${subject.id}">
+      <div class="date-box">
+        <small>${formatDate(date, { month: "short" })}</small>
+        <strong>${formatDate(date, { day: "numeric" })}</strong>
+        <small>${formatDate(date, { weekday: "short" })}</small>
+      </div>
+      <div class="up-body">
+        <div class="up-title">${esc(item.title)}</div>
+        <div class="up-sub">${group.label} • ${esc(subject.name)}</div>
+      </div>
+      <span class="pill ${info.cls}">${esc(info.text)}</span>
+    </div>`;
+}
+
+function renderUpcoming() {
+  const all = getUpcoming();
+  const overdue = all.filter((u) => daysUntil(u.date) < 0);
+  const upcoming = all.filter((u) => daysUntil(u.date) >= 0).slice(0, 6);
+
+  if (!overdue.length && !upcoming.length) {
+    $("upcomingList").innerHTML = `<div class="empty">مفيش مواعيد قادمة 🎉</div>`;
+    return;
+  }
+
+  let html = "";
+  if (overdue.length) {
+    html += `<div class="list-label late">⚠️ Overdue</div>` + overdue.map(upcomingRowHTML).join("");
+  }
+  if (upcoming.length) {
+    html += `<div class="list-label">🗓️ Upcoming</div>` + upcoming.map(upcomingRowHTML).join("");
+  }
+  $("upcomingList").innerHTML = html;
+}
+
+function renderBadge() {
+  const count = getUpcoming().filter((u) => daysUntil(u.date) <= 1).length;
+  $("notifBadge").textContent = count;
+  $("notifBadge").classList.toggle("hidden", count === 0);
+}
+
+function statCardHTML(value, label, cls) {
+  return `
+    <div class="stat-card ${cls || ""}">
+      <strong>${value}</strong>
+      <span>${label}</span>
+    </div>`;
+}
+
+function highlightHTML(title, entry, text, cls) {
+  if (!entry) {
+    return `
+      <div class="highlight">
+        <small>${title}</small>
+        <p class="muted-text">لسه مفيش بيانات</p>
+      </div>`;
+  }
+  return `
+    <div class="highlight ${cls}" style="--c:${entry.subject.color}">
+      <small>${title}</small>
+      <strong>${esc(entry.subject.name)}</strong>
+      <span>${text}</span>
+    </div>`;
+}
+
+function renderStats() {
+  const s = computeStats();
+
+  const rows = s.perSubject.length
+    ? s.perSubject
+        .map(
+          (e) => `
+        <div class="stat-row" style="--c:${e.subject.color}">
+          <div class="stat-row-head">
+            <span>${esc(e.subject.name)}</span>
+            <strong>${e.progress}%</strong>
+          </div>
+          <div class="bar"><span style="width:${e.progress}%"></span></div>
+        </div>`
+        )
+        .join("")
+    : `<div class="empty">مفيش مواد في الترم ده لسه</div>`;
+
+  $("statsView").innerHTML = `
+    <div class="term-switch">
+      ${terms
+        .map(
+          (t) =>
+            `<button class="term-btn ${t.id === currentTermId ? "active" : ""}" data-term="${t.id}">${esc(t.name)}</button>`
+        )
+        .join("")}
+    </div>
+
+    <section class="overall">
+      <div class="overall-head">
+        <span>Overall Progress</span>
+        <strong>${s.overall}%</strong>
+      </div>
+      <div class="bar"><span style="width:${s.overall}%"></span></div>
+    </section>
+
+    <section>
+      <div class="stat-grid">
+        ${statCardHTML(s.completed, "Completed", "ok")}
+        ${statCardHTML(s.pending, "Pending", "")}
+        ${statCardHTML(s.overdue, "Overdue", "bad")}
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head"><h2>أبرز المواد</h2></div>
+      <div class="highlight-grid">
+        ${highlightHTML("🏆 أكتر مادة متقدم فيها", s.best, s.best ? `${s.best.progress}% مكتمل` : "", "good")}
+        ${highlightHTML("⚠️ أكتر مادة متأخر فيها", s.mostLate, s.mostLate ? `${s.mostLate.overdue} عنصر متأخر` : "", "warn")}
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head"><h2>تفاصيل</h2></div>
+      <div class="stat-grid four">
+        ${statCardHTML(`${s.lectures.done}/${s.lectures.total}`, "🎥 محاضرات", "")}
+        ${statCardHTML(`${s.sheets.done}/${s.sheets.total}`, "📄 Sheets", "")}
+        ${statCardHTML(`${s.assignments.done}/${s.assignments.total}`, "📝 Assignments", "")}
+        ${statCardHTML(s.upcomingExams, "🧪 امتحانات قادمة", "")}
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head"><h2>تقدم كل مادة</h2></div>
+      <div class="card stat-rows">${rows}</div>
+    </section>`;
+}
+
+function setView(view) {
+  currentView = view;
+  $("homeView").classList.toggle("hidden", view === "stats");
+  $("statsView").classList.toggle("hidden", view !== "stats");
+  document.querySelectorAll(".nav-btn[data-nav]").forEach((btn) => {
+    const nav = btn.dataset.nav;
+    const active = nav === "stats" ? view === "stats" : nav === "home" ? view === "home" : false;
+    btn.classList.toggle("active", active);
+  });
+  renderAll();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function renderSearch() {
+  const query = $("searchInput").value;
+  if (!query.trim()) {
+    searchPanel.classList.add("hidden");
+    searchPanel.innerHTML = "";
+    return;
+  }
+
+  const results = searchAll(query);
+  if (!results.length) {
+    searchPanel.innerHTML = `<div class="no-results">مفيش نتائج</div>`;
+  } else {
+    searchPanel.innerHTML = results
+      .map((r) => {
+        const title = r.kind === "subject" ? r.subject.name : r.item.title;
+        const sub =
+          r.kind === "subject"
+            ? `📚 مادة • ${termName(r.subject.termId)}`
+            : `${r.group.label} • ${r.subject.name} • ${termName(r.subject.termId)}`;
+        return `
+          <button class="result" style="--c:${r.subject.color}" data-result="${r.subject.id}">
+            <span class="dot"></span>
+            <span class="result-body">
+              <strong>${esc(title)}</strong>
+              <small>${esc(sub)}</small>
+            </span>
+          </button>`;
+      })
+      .join("");
+  }
+  searchPanel.classList.remove("hidden");
+}
+
+function hideSearch() {
+  searchPanel.classList.add("hidden");
+}
+
+function clearSearch() {
+  $("searchInput").value = "";
+  searchPanel.innerHTML = "";
+  hideSearch();
+}
+
+function itemHTML(item, group) {
+  const date = item[group.dateField];
+  const info = date && !item.completed ? dueInfo(date) : null;
+  const ref = `${group.key}:${item.id}`;
+  return `
+    <div class="item ${item.completed ? "done" : ""}">
+      <input type="checkbox" data-toggle="${ref}" ${item.completed ? "checked" : ""} />
+      <div class="item-body">
+        <div class="item-title">${esc(item.title)}</div>
+        ${item.notes ? `<div class="item-sub">${esc(item.notes)}</div>` : ""}
+      </div>
+      ${info ? `<span class="pill ${info.cls}">${esc(info.text)}</span>` : ""}
+      <div class="item-actions">
+        <button class="mini-btn" data-edit="${ref}" aria-label="تعديل">✏️</button>
+        <button class="mini-btn" data-delete="${ref}" aria-label="حذف">🗑️</button>
+      </div>
+    </div>`;
+}
+
+function listViewHTML() {
+  const subject = currentSubject();
+
+  const chips = FILTERS.map(
+    (f) => `
+      <button class="chip ${f.key === modalFilter ? "active" : ""}" data-filter="${f.key}">
+        ${f.label}<small>${filterCount(subject, f.key)}</small>
+      </button>`
+  ).join("");
+
+  const byStatus = modalFilter === "completed" || modalFilter === "pending";
+  const visible = GROUPS.filter((g) => modalFilter === "all" || byStatus || g.key === modalFilter);
+
+  let groupsHTML = visible
+    .map((group) => {
+      const items = byStatus
+        ? subject[group.key].filter((i) => (modalFilter === "completed") === i.completed)
+        : subject[group.key];
+      if (byStatus && !items.length) return "";
+      return `
+        <div class="group">
+          <h4>${group.label}</h4>
+          ${items.length ? items.map((i) => itemHTML(i, group)).join("") : `<div class="item-sub">لسه مفيش عناصر</div>`}
+        </div>`;
+    })
+    .join("");
+
+  if (!groupsHTML.trim()) {
+    groupsHTML = `<div class="group"><div class="item-sub">مفيش عناصر هنا</div></div>`;
+  }
+
+  return `
+    <div class="modal-content">
+      <div class="modal-head">
+        <div>
+          <h2>${esc(subject.name)}</h2>
+          <p class="meta">${calculateProgress(subject)}% مكتمل</p>
+        </div>
+        <div class="head-actions">
+          <button class="mini-btn big" data-edit-subject aria-label="تعديل المادة">✏️</button>
+          <button class="mini-btn big" data-delete-subject aria-label="حذف المادة">🗑️</button>
+          <button class="close-btn" data-close>✕</button>
+        </div>
+      </div>
+      <div class="bar" style="--c:${subject.color}">
+        <span style="width:${calculateProgress(subject)}%"></span>
+      </div>
+      <div class="filters">${chips}</div>
+      ${groupsHTML}
+      <button class="add-btn" data-add>+ Add Item</button>
+    </div>`;
+}
+
+function formViewHTML() {
+  const group = groupByKey(editing ? editing.groupKey : GROUPS[0].key);
+  const item = editing ? currentSubject()[group.key].find((i) => i.id === editing.itemId) : null;
+  const options = GROUPS.map(
+    (g) => `<option value="${g.key}" ${g.key === group.key ? "selected" : ""}>${g.label}</option>`
+  ).join("");
+
+  return `
+    <form class="modal-content" id="itemForm">
+      <div class="modal-head">
+        <h2>${editing ? "تعديل العنصر" : "إضافة عنصر جديد"}</h2>
+        <button type="button" class="close-btn" data-back>✕</button>
+      </div>
+
+      <label class="field">
+        <span>النوع</span>
+        <select id="itemType" name="type" ${editing ? "disabled" : ""}>${options}</select>
+      </label>
+
+      <label class="field">
+        <span>الاسم</span>
+        <input type="text" name="title" required placeholder="مثلاً: Lecture 3" value="${item ? esc(item.title) : ""}" />
+      </label>
+
+      <label class="field">
+        <span id="dateLabel">${group.dateLabel} (اختياري)</span>
+        <input type="date" name="date" value="${item ? esc(item[group.dateField] || "") : ""}" />
+      </label>
+
+      <label class="field">
+        <span>ملاحظات (اختياري)</span>
+        <textarea name="notes" rows="3">${item ? esc(item.notes || "") : ""}</textarea>
+      </label>
+
+      <div class="form-actions">
+        <button type="submit" class="add-btn">حفظ</button>
+        <button type="button" class="ghost-btn" data-back>إلغاء</button>
+      </div>
+    </form>`;
+}
+
+function subjectFormHTML() {
+  const subject = editingSubjectId ? subjects.find((s) => s.id === editingSubjectId) : null;
+  const color = subject ? subject.color : COLORS[subjects.length % COLORS.length];
+  const termId = subject ? subject.termId : currentTermId;
+  const palette = COLORS.includes(color) ? COLORS : [color, ...COLORS];
+
+  const swatches = palette
+    .map(
+      (c) => `
+        <label class="swatch" style="--c:${c}">
+          <input type="radio" name="color" value="${c}" ${c === color ? "checked" : ""} />
+          <span></span>
+        </label>`
+    )
+    .join("");
+
+  const termOptions = terms
+    .map((t) => `<option value="${t.id}" ${t.id === termId ? "selected" : ""}>${esc(t.name)}</option>`)
+    .join("");
+
+  return `
+    <form class="modal-content" id="subjectForm">
+      <div class="modal-head">
+        <h2>${subject ? "تعديل المادة" : "إضافة مادة جديدة"}</h2>
+        <button type="button" class="close-btn" data-back>✕</button>
+      </div>
+
+      <label class="field">
+        <span>اسم المادة</span>
+        <input type="text" name="name" required placeholder="مثلاً: جافا" value="${subject ? esc(subject.name) : ""}" />
+      </label>
+
+      <div class="group-field">
+        <span>اللون</span>
+        <div class="swatches">${swatches}</div>
+      </div>
+
+      <label class="field">
+        <span>الترم</span>
+        <select name="termId">${termOptions}</select>
+      </label>
+
+      <div class="form-actions">
+        <button type="submit" class="add-btn">حفظ</button>
+        <button type="button" class="ghost-btn" data-back>إلغاء</button>
+      </div>
+    </form>`;
+}
+
+function renderModal() {
+  if (modalView === "subjectForm") {
+    $("subjectModal").innerHTML = subjectFormHTML();
+  } else if (modalView === "form") {
+    $("subjectModal").innerHTML = formViewHTML();
+  } else {
+    $("subjectModal").innerHTML = listViewHTML();
+  }
+}
+
+function renderAll() {
+  renderTerms();
+  renderOverall();
+  renderSubjects();
+  renderUpcoming();
+  renderBadge();
+  if (currentView === "stats") renderStats();
+  if (modalView !== "closed") renderModal();
+}
+
+function showModal(view) {
+  modalView = view;
+  renderModal();
+  $("subjectModal").classList.remove("hidden");
+}
+
+function openSubject(id) {
+  openSubjectId = id;
+  modalFilter = "all";
+  editing = null;
+  editingSubjectId = null;
+  showModal("list");
+}
+
+function closeModal() {
+  openSubjectId = null;
+  modalView = "closed";
+  modalFilter = "all";
+  editing = null;
+  editingSubjectId = null;
+  $("subjectModal").classList.add("hidden");
+}
+
+function parseRef(value) {
+  const [groupKey, itemId] = value.split(":");
+  return { groupKey, itemId };
+}
+
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".search")) hideSearch();
+
+  const navBtn = e.target.closest("[data-nav]");
+  if (navBtn) {
+    const nav = navBtn.dataset.nav;
+    if (nav === "stats") return setView("stats");
+    setView("home");
+    if (nav === "upcoming") {
+      return $("upcomingList").scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    return;
+  }
+
+  const resultBtn = e.target.closest("[data-result]");
+  if (resultBtn) {
+    const subject = subjects.find((s) => s.id === resultBtn.dataset.result);
+    if (!subject) return;
+    currentTermId = subject.termId;
+    saveData();
+    clearSearch();
+    renderAll();
+    return openSubject(subject.id);
+  }
+
+  const termBtn = e.target.closest("[data-term]");
+  if (termBtn) {
+    currentTermId = termBtn.dataset.term;
+    saveData();
+    return renderAll();
+  }
+
+  const filterBtn = e.target.closest("[data-filter]");
+  if (filterBtn) {
+    modalFilter = filterBtn.dataset.filter;
+    return renderModal();
+  }
+
+  if (e.target.closest("[data-add-subject]")) {
+    openSubjectId = null;
+    editingSubjectId = null;
+    return showModal("subjectForm");
+  }
+
+  const card = e.target.closest("[data-subject]");
+  if (card) return openSubject(card.dataset.subject);
+
+  if (e.target.closest("[data-edit-subject]")) {
+    editingSubjectId = openSubjectId;
+    return showModal("subjectForm");
+  }
+
+  if (e.target.closest("[data-delete-subject]")) {
+    if (!confirm("هتمسح المادة وكل اللي جواها. متأكد؟")) return;
+    deleteSubject(openSubjectId);
+    closeModal();
+    return renderAll();
+  }
+
+  const editBtn = e.target.closest("[data-edit]");
+  if (editBtn) {
+    editing = parseRef(editBtn.dataset.edit);
+    return showModal("form");
+  }
+
+  const deleteBtn = e.target.closest("[data-delete]");
+  if (deleteBtn) {
+    if (!confirm("متأكد إنك عايز تمسح العنصر ده؟")) return;
+    const { groupKey, itemId } = parseRef(deleteBtn.dataset.delete);
+    deleteItem(groupKey, itemId);
+    return renderAll();
+  }
+
+  if (e.target.closest("[data-add]")) {
+    editing = null;
+    return showModal("form");
+  }
+
+  if (e.target.closest("[data-back]")) {
+    editing = null;
+    editingSubjectId = null;
+    if (openSubjectId) return showModal("list");
+    return closeModal();
+  }
+
+  if (e.target.closest("[data-close]")) return closeModal();
+
+  if (e.target.id === "subjectModal" && modalView === "list") return closeModal();
+});
+
+document.addEventListener("input", (e) => {
+  if (e.target.id === "searchInput") renderSearch();
+});
+
+document.addEventListener("focusin", (e) => {
+  if (e.target.id === "searchInput") renderSearch();
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (!searchPanel.classList.contains("hidden")) return hideSearch();
+  if (modalView === "list") closeModal();
+});
+
+document.addEventListener("change", (e) => {
+  if (e.target.id === "itemType") {
+    $("dateLabel").textContent = groupByKey(e.target.value).dateLabel + " (اختياري)";
+    return;
+  }
+
+  const value = e.target.dataset.toggle;
+  if (!value) return;
+  const { groupKey, itemId } = parseRef(value);
+  toggleComplete(groupKey, itemId);
+  renderAll();
+});
+
+document.addEventListener("submit", (e) => {
+  if (e.target.id === "subjectForm") {
+    e.preventDefault();
+    const form = new FormData(e.target);
+    const name = String(form.get("name") || "").trim();
+    if (!name) return;
+
+    const data = {
+      name,
+      color: String(form.get("color") || COLORS[0]),
+      termId: String(form.get("termId")),
+    };
+
+    const wasEditing = Boolean(editingSubjectId);
+    if (wasEditing) {
+      editSubject(editingSubjectId, data);
+    } else {
+      addSubject(data);
+    }
+
+    currentTermId = data.termId;
+    saveData();
+    editingSubjectId = null;
+
+    if (wasEditing) {
+      modalView = "list";
+    } else {
+      closeModal();
+    }
+    return renderAll();
+  }
+
+  if (e.target.id !== "itemForm") return;
+  e.preventDefault();
+
+  const form = new FormData(e.target);
+  const title = String(form.get("title") || "").trim();
+  if (!title) return;
+
+  const data = {
+    title,
+    date: String(form.get("date") || ""),
+    notes: String(form.get("notes") || "").trim(),
+  };
+
+  if (editing) {
+    editItem(editing.groupKey, editing.itemId, data);
+  } else {
+    addSubjectItem(String(form.get("type")), data);
+  }
+
+  editing = null;
+  modalFilter = "all";
+  modalView = "list";
+  renderAll();
+});
+
+loadData();
+renderAll();
