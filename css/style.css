@@ -538,6 +538,11 @@ section {
   color: #b87400;
 }
 
+.pill.ok {
+  background: #e0f6ec;
+  color: #1f8f5f;
+}
+
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

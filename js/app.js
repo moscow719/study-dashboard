@@ -104,13 +104,19 @@ function formatDate(dateStr, options) {
   return new Date(dateStr + "T00:00:00").toLocaleDateString("ar-EG", options);
 }
 
+function countdownText(d) {
+  if (d === 2) return "بعد يومين";
+  if (d <= 10) return `بعد ${d} أيام`;
+  return `بعد ${d} يوم`;
+}
+
 function dueInfo(dateStr) {
   const d = daysUntil(dateStr);
-  if (d < 0) return { text: `متأخر ${-d} يوم`, cls: "late" };
-  if (d === 0) return { text: "النهاردة", cls: "soon" };
-  if (d === 1) return { text: "بكرة", cls: "soon" };
-  if (d <= 3) return { text: `بعد ${d} أيام`, cls: "soon" };
-  return { text: formatDate(dateStr, { day: "numeric", month: "long" }), cls: "" };
+  if (d < 0) return { text: d === -1 ? "متأخر يوم" : `متأخر ${-d} يوم`, cls: "late" };
+  if (d === 0) return { text: "النهاردة", cls: "late" };
+  if (d === 1) return { text: "بكرة", cls: "late" };
+  if (d < 7) return { text: countdownText(d), cls: "soon" };
+  return { text: countdownText(d), cls: "ok" };
 }
 
 function getUpcoming() {
@@ -437,7 +443,11 @@ function renderUpcoming() {
 }
 
 function notifItems() {
-  return getUpcoming().filter((u) => daysUntil(u.date) <= 1);
+  return getUpcoming().filter((u) => daysUntil(u.date) <= 3);
+}
+
+function completedSubjects() {
+  return subjects.filter((s) => allItems(s).length > 0 && calculateProgress(s) === 100);
 }
 
 function renderBadge() {
@@ -446,20 +456,40 @@ function renderBadge() {
   $("notifBadge").classList.toggle("hidden", count === 0);
 }
 
+function congratsRowHTML(subject) {
+  return `
+    <div class="up-item" style="--c:${subject.color}" data-subject="${subject.id}">
+      <div class="date-box"><strong>🎉</strong></div>
+      <div class="up-body">
+        <div class="up-title">مبروك! خلصت المادة</div>
+        <div class="up-sub">${esc(subject.name)} • ${esc(termName(subject.termId))}</div>
+      </div>
+      <span class="pill ok">100%</span>
+    </div>`;
+}
+
 function renderNotif() {
   const list = notifItems();
   const overdue = list.filter((u) => daysUntil(u.date) < 0);
-  const soon = list.filter((u) => daysUntil(u.date) >= 0);
+  const today = list.filter((u) => daysUntil(u.date) >= 0 && daysUntil(u.date) <= 1);
+  const soon = list.filter((u) => daysUntil(u.date) >= 2);
+  const done = completedSubjects();
 
   let html = `<div class="notif-title">🔔 التنبيهات</div>`;
-  if (!list.length) {
+  if (!list.length && !done.length) {
     html += `<div class="empty">مفيش تنبيهات 🎉</div>`;
   }
   if (overdue.length) {
     html += `<div class="list-label late">⚠️ متأخر</div>` + overdue.map(upcomingRowHTML).join("");
   }
+  if (today.length) {
+    html += `<div class="list-label">⏰ النهاردة وبكرة</div>` + today.map(upcomingRowHTML).join("");
+  }
   if (soon.length) {
-    html += `<div class="list-label">⏰ النهاردة وبكرة</div>` + soon.map(upcomingRowHTML).join("");
+    html += `<div class="list-label">📅 خلال 3 أيام</div>` + soon.map(upcomingRowHTML).join("");
+  }
+  if (done.length) {
+    html += `<div class="list-label">🏆 إنجازات</div>` + done.map(congratsRowHTML).join("");
   }
   $("notifPanel").innerHTML = html;
 }
