@@ -1,0 +1,135 @@
+.auth-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: linear-gradient(135deg, rgba(91, 63, 209, 0.92), rgba(124, 77, 255, 0.92));
+  backdrop-filter: blur(6px);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  background: #fff;
+  border-radius: 28px;
+  padding: 28px 24px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: center;
+  box-shadow: 0 24px 60px rgba(30, 20, 80, 0.35);
+}
+
+.auth-logo {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto;
+  border-radius: 20px;
+  background: linear-gradient(135deg, var(--purple), var(--purple-2));
+  display: grid;
+  place-items: center;
+  font-size: 1.9rem;
+}
+
+.auth-card h2 {
+  font-size: 1.35rem;
+}
+
+.auth-sub {
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  margin-bottom: 4px;
+}
+
+.auth-card input {
+  font-family: inherit;
+  font-size: 1rem;
+  padding: 13px 14px;
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
+  outline: none;
+  width: 100%;
+  text-align: right;
+  background: #faf9ff;
+}
+
+.auth-card input:focus {
+  border-color: var(--purple-2);
+  background: #fff;
+}
+
+.auth-card input[type="email"],
+.auth-card input[type="password"] {
+  direction: ltr;
+  text-align: left;
+}
+
+.auth-card input::placeholder {
+  direction: rtl;
+}
+
+.auth-error {
+  color: #d43a3a;
+  background: #ffe6e6;
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+}
+
+.auth-primary {
+  background: linear-gradient(135deg, var(--purple), var(--purple-2));
+  color: #fff;
+  border: none;
+  border-radius: 14px;
+  padding: 13px;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.auth-primary:disabled {
+  opacity: 0.6;
+}
+
+.auth-link {
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--purple);
+  cursor: pointer;
+  padding: 6px;
+}
+
+.auth-link.muted {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.account-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px 12px;
+  margin-bottom: 4px;
+  background: color-mix(in srgb, var(--purple) 8%, #fff);
+  border-radius: 14px;
+  direction: ltr;
+  text-align: left;
+}
+
+.account-info strong {
+  font-size: 0.88rem;
+  word-break: break-all;
+}
+
+.account-info small {
+  color: var(--muted);
+  direction: rtl;
+  text-align: right;
+}
