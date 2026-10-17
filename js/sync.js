@@ -3,6 +3,54 @@
   const SUPABASE_KEY = "sb_publishable_b_gB_7oWGovqnCC7ZrpFhw_eLGVnbjm";
   const DIRTY_KEY = "study-dashboard-dirty";
   const SKIP_KEY = "study-dashboard-skip-login";
+  const PROFILE_KEY = "study-dashboard-profile";
+
+  const TEMPLATE = [
+    ["CCNA R&S II", "#7c4dff"],
+    ["Computer Architecture", "#ff9800"],
+    ["Data Communication", "#2f80ed"],
+    ["Java Programming II", "#2fb67c"],
+    ["Microprocessor (Network)", "#ec407a"],
+    ["Network Administration", "#f5b400"],
+  ];
+
+  let profile = {};
+  try {
+    profile = JSON.parse(localStorage.getItem(PROFILE_KEY)) || {};
+  } catch (error) {}
+
+  function applyProfile() {
+    const name = profile.name || "طالب";
+    const hello = document.querySelector(".hello");
+    if (hello) hello.textContent = "أهلاً، " + name + " 👋";
+    document.querySelectorAll(".avatar").forEach((el) => {
+      el.textContent = name.trim().charAt(0).toUpperCase();
+    });
+    const strong = document.querySelector(".drawer-user strong");
+    if (strong) strong.textContent = name;
+  }
+
+  function saveProfile() {
+    try {
+      localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+    } catch (error) {}
+  }
+
+  function templateSubjects() {
+    return TEMPLATE.map(([name, color], index) => ({
+      id: "sub" + (index + 1),
+      termId: "term1",
+      name: name,
+      icon: ICONS[index % ICONS.length],
+      color: color,
+      lectures: [],
+      sheets: [],
+      assignments: [],
+      exams: [{ id: "e" + (index + 1), title: "Midterm", completed: false, examDate: "", notes: "" }],
+    }));
+  }
+
+  applyProfile();
 
   if (!window.supabase || typeof saveData !== "function") return;
 
@@ -30,7 +78,7 @@
   }
 
   function payload() {
-    return { subjects: subjects, termId: currentTermId };
+    return { subjects: subjects, termId: currentTermId, profile: profile };
   }
 
   function setStatus(text) {
@@ -80,19 +128,87 @@
         .maybeSingle();
       if (error) throw error;
       const remote = data && data.data;
-      const hasRemote = remote && Array.isArray(remote.subjects) && remote.subjects.length > 0;
-      if (!hasRemote || isDirty()) {
+      const hasRemote =
+        remote &&
+        ((Array.isArray(remote.subjects) && remote.subjects.length > 0) || (remote.profile && remote.profile.name));
+      if (!hasRemote) {
+        setStatus("حساب جديد");
+        showWelcome(true);
+        return;
+      }
+      if (remote.profile && remote.profile.name) {
+        profile = remote.profile;
+        saveProfile();
+        applyProfile();
+      }
+      if (isDirty()) {
         await push();
         return;
       }
-      subjects.splice(0, subjects.length, ...remote.subjects);
-      if (terms.some((t) => t.id === remote.termId)) currentTermId = remote.termId;
-      originalSave();
-      renderAll();
+      if (Array.isArray(remote.subjects)) {
+        subjects.splice(0, subjects.length, ...remote.subjects);
+        if (terms.some((t) => t.id === remote.termId)) currentTermId = remote.termId;
+        originalSave();
+        renderAll();
+      }
       setStatus("تم الحفظ في السحابة ✓");
+      if (!profile.name) showWelcome(false);
     } catch (error) {
       setStatus("مش متصل — شغال على نسخة الجهاز");
     }
+  }
+
+  function welcomeModal(isNew) {
+    let el = document.getElementById("welcomeModal");
+    if (el) el.remove();
+    el = document.createElement("div");
+    el.id = "welcomeModal";
+    el.className = "auth-modal";
+    el.innerHTML = `
+      <form class="auth-card" id="welcomeForm" novalidate>
+        <div class="auth-logo">👋</div>
+        <h2>أهلاً بيك!</h2>
+        <p class="auth-sub">${isNew ? "خلينا نظبط حسابك في خطوة واحدة" : "اكتب اسمك عشان يظهر في الموقع"}</p>
+        <input id="welcomeName" type="text" placeholder="اسمك" maxlength="24" value="${esc(profile.name || "")}" style="direction: rtl; text-align: right" />
+        ${
+          isNew
+            ? `<div class="choice-group">
+                <label class="choice"><input type="radio" name="welcomeMode" value="batch" checked /><span><strong>نفس مواد الدفعة</strong><small>6 مواد جاهزة، وتضيف عليهم براحتك</small></span></label>
+                <label class="choice"><input type="radio" name="welcomeMode" value="own" /><span><strong>هظبط موادي بنفسي</strong><small>تبدأ فاضي وتضيف موادك</small></span></label>
+              </div>`
+            : ""
+        }
+        <p class="auth-error hidden" id="welcomeError"></p>
+        <button class="auth-primary" type="submit">يلا نبدأ</button>
+      </form>`;
+    document.body.appendChild(el);
+    return el;
+  }
+
+  function showWelcome(isNew) {
+    const el = welcomeModal(isNew);
+    el.querySelector("form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const name = document.getElementById("welcomeName").value.trim();
+      if (!name) {
+        const box = document.getElementById("welcomeError");
+        box.textContent = "اكتب اسمك";
+        box.classList.remove("hidden");
+        return;
+      }
+      profile = { name: name };
+      saveProfile();
+      if (isNew) {
+        const chosen = el.querySelector('input[name="welcomeMode"]:checked');
+        const mode = chosen ? chosen.value : "batch";
+        subjects.splice(0, subjects.length, ...(mode === "batch" ? templateSubjects() : []));
+        currentTermId = terms[0].id;
+      }
+      el.remove();
+      applyProfile();
+      renderAll();
+      saveData();
+    });
   }
 
   function authModal() {
@@ -229,8 +345,12 @@
       }
       if (action === "logout") {
         await client.auth.signOut();
-        document.getElementById("backdrop").click();
-        showAuth();
+        try {
+          localStorage.removeItem(STORAGE_KEY);
+          localStorage.removeItem(PROFILE_KEY);
+          localStorage.removeItem(DIRTY_KEY);
+        } catch (error) {}
+        location.reload();
       }
     },
     true

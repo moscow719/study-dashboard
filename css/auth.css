@@ -7,6 +7,7 @@
   padding: 20px;
   background: linear-gradient(135deg, rgba(91, 63, 209, 0.92), rgba(124, 77, 255, 0.92));
   backdrop-filter: blur(6px);
+  overflow-y: auto;
 }
 
 .auth-card {
@@ -132,4 +133,46 @@
   color: var(--muted);
   direction: rtl;
   text-align: right;
+}
+
+.choice-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: right;
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
+  cursor: pointer;
+  background: #faf9ff;
+}
+
+.choice:has(input:checked) {
+  border-color: var(--purple-2);
+  background: color-mix(in srgb, var(--purple) 8%, #fff);
+}
+
+.choice input {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  accent-color: var(--purple);
+  padding: 0;
+}
+
+.choice span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.choice small {
+  color: var(--muted);
+  font-size: 0.8rem;
 }
