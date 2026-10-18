@@ -24,6 +24,18 @@ function todayStr() {
   return `${d.getFullYear()}-${month}-${day}`;
 }
 
+function cleanUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : "https://" + raw;
+  try {
+    const url = new URL(withScheme);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : "";
+  } catch (error) {
+    return "";
+  }
+}
+
 function statusOf(item) {
   return item.status === "submitted" || item.status === "graded" ? item.status : "pending";
 }
@@ -291,7 +303,7 @@ function addSubjectItem(groupKey, data) {
     notes: data.notes,
   };
   item[group.dateField] = data.date;
-  if (group.hasFile) item.fileUrl = "";
+  if (group.hasFile) item.fileUrl = cleanUrl(data.fileUrl);
   if (group.key === "assignments") {
     item.status = data.status || "pending";
     if (item.status !== "pending") applyCompletion(item, true);
@@ -307,6 +319,7 @@ function editItem(groupKey, itemId, data) {
   item.title = data.title;
   item[group.dateField] = data.date;
   item.notes = data.notes;
+  if (group.hasFile) item.fileUrl = cleanUrl(data.fileUrl);
   if (group.key === "assignments" && data.status) {
     item.status = data.status;
     applyCompletion(item, data.status !== "pending");
@@ -370,7 +383,7 @@ function normalizeSubject(raw) {
           notes: typeof i.notes === "string" ? i.notes : "",
         };
         item[group.dateField] = /^\d{4}-\d{2}-\d{2}$/.test(i[group.dateField]) ? i[group.dateField] : "";
-        if (group.hasFile) item.fileUrl = "";
+        if (group.hasFile) item.fileUrl = cleanUrl(i.fileUrl);
         if (item.completed && /^\d{4}-\d{2}-\d{2}$/.test(i.completedAt)) item.completedAt = i.completedAt;
         if (group.key === "assignments") item.status = statusOf(i);
         return item;
@@ -767,6 +780,10 @@ function itemHTML(item, group) {
   const date = item[group.dateField];
   const info = date && !item.completed ? dueInfo(date) : null;
   const ref = `${group.key}:${item.id}`;
+  const link = group.hasFile ? cleanUrl(item.fileUrl) : "";
+  const linkBtn = link
+    ? `<a class="mini-btn big" href="${esc(link)}" target="_blank" rel="noopener noreferrer" aria-label="فتح المرفق">📎</a>`
+    : "";
   const status = group.key === "assignments" ? statusOf(item) : "pending";
   const statusPill =
     status === "graded"
@@ -781,6 +798,7 @@ function itemHTML(item, group) {
         <span class="item-title">${esc(item.title)}</span>
         ${item.notes ? `<span class="item-sub">${esc(item.notes)}</span>` : ""}
       </button>
+      ${linkBtn}
       ${statusPill}
       ${info ? `<span class="pill ${info.cls}">${esc(info.text)}</span>` : ""}
       <span class="item-go">‹</span>
@@ -880,6 +898,13 @@ function formViewHTML() {
     (g) => `<option value="${g.key}" ${g.key === group.key ? "selected" : ""}>${g.label}</option>`
   ).join("");
 
+  const fileField = group.hasFile
+    ? `<label class="field">
+        <span>رابط أو ملف (اختياري)</span>
+        <input type="text" name="fileUrl" inputmode="url" placeholder="الصق رابط Drive أو YouTube أو أي رابط" style="direction: ltr; text-align: left" value="${item ? esc(cleanUrl(item.fileUrl)) : ""}" />
+      </label>`
+    : "";
+
   const currentStatus = item ? statusOf(item) : "pending";
   const statusField =
     group.key === "assignments"
@@ -914,6 +939,8 @@ function formViewHTML() {
       </label>
 
       ${statusField}
+
+      ${fileField}
 
       <label class="field">
         <span>ملاحظات (اختياري)</span>
@@ -1252,6 +1279,7 @@ document.addEventListener("submit", (e) => {
     date: String(form.get("date") || ""),
     notes: String(form.get("notes") || "").trim(),
     status: form.get("status") ? String(form.get("status")) : "",
+    fileUrl: String(form.get("fileUrl") || ""),
   };
 
   if (editing) {
