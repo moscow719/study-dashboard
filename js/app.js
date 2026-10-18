@@ -11,6 +11,32 @@ const GROUPS = [
 
 const STORAGE_KEY = "study-dashboard-v1";
 
+const STATUSES = [
+  { key: "pending", label: "⏳ لسه ما اتسلمش" },
+  { key: "submitted", label: "📤 اتسلم" },
+  { key: "graded", label: "✅ اتصحح" },
+];
+
+function todayStr() {
+  const d = new Date();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${month}-${day}`;
+}
+
+function statusOf(item) {
+  return item.status === "submitted" || item.status === "graded" ? item.status : "pending";
+}
+
+function applyCompletion(item, completed) {
+  item.completed = completed;
+  if (completed) {
+    if (!item.completedAt) item.completedAt = todayStr();
+  } else {
+    delete item.completedAt;
+  }
+}
+
 let currentTermId = terms[0].id;
 let currentView = "home";
 let openSubjectId = null;
@@ -154,6 +180,14 @@ function computeStats() {
     if (!best || s.progress > best.progress) best = s;
   });
 
+  let least = null;
+  if (withItems.length > 1) {
+    withItems.forEach((s) => {
+      if (!least || s.progress < least.progress) least = s;
+    });
+    if (best && least.subject.id === best.subject.id) least = null;
+  }
+
   let mostLate = null;
   perSubject.forEach((s) => {
     if (s.overdue > 0 && (!mostLate || s.overdue > mostLate.overdue)) mostLate = s;
@@ -161,6 +195,21 @@ function computeStats() {
 
   const done = (key) => list.flatMap((s) => s[key]).filter((i) => i.completed).length;
   const total = (key) => list.flatMap((s) => s[key]).length;
+
+  const weekDays = [];
+  for (let d = -6; d <= 0; d++) {
+    const date = new Date();
+    date.setDate(date.getDate() + d);
+    weekDays.push({ d, count: 0, label: date.toLocaleDateString("ar-EG", { weekday: "short" }) });
+  }
+  let lastWeek = 0;
+  items.forEach((i) => {
+    if (!i.completed || !i.completedAt) return;
+    const d = daysUntil(i.completedAt);
+    if (d <= 0 && d >= -6) weekDays[d + 6].count++;
+    else if (d <= -7 && d >= -13) lastWeek++;
+  });
+  const thisWeek = weekDays.reduce((sum, w) => sum + w.count, 0);
 
   const upcomingExams = list
     .flatMap((s) => s.exams)
@@ -174,6 +223,8 @@ function computeStats() {
     perSubject,
     best,
     mostLate,
+    least,
+    week: { thisWeek, lastWeek, days: weekDays },
     lectures: { done: done("lectures"), total: total("lectures") },
     sheets: { done: done("sheets"), total: total("sheets") },
     assignments: { done: done("assignments"), total: total("assignments") },
@@ -241,6 +292,10 @@ function addSubjectItem(groupKey, data) {
   };
   item[group.dateField] = data.date;
   if (group.hasFile) item.fileUrl = "";
+  if (group.key === "assignments") {
+    item.status = data.status || "pending";
+    if (item.status !== "pending") applyCompletion(item, true);
+  }
   currentSubject()[groupKey].push(item);
   saveData();
 }
@@ -252,6 +307,10 @@ function editItem(groupKey, itemId, data) {
   item.title = data.title;
   item[group.dateField] = data.date;
   item.notes = data.notes;
+  if (group.key === "assignments" && data.status) {
+    item.status = data.status;
+    applyCompletion(item, data.status !== "pending");
+  }
   saveData();
 }
 
@@ -264,7 +323,10 @@ function deleteItem(groupKey, itemId) {
 function toggleComplete(groupKey, itemId) {
   const item = currentSubject()[groupKey].find((i) => i.id === itemId);
   if (!item) return;
-  item.completed = !item.completed;
+  applyCompletion(item, !item.completed);
+  if (groupKey === "assignments") {
+    item.status = item.completed ? (item.status === "graded" ? "graded" : "submitted") : "pending";
+  }
   saveData();
 }
 
@@ -309,6 +371,8 @@ function normalizeSubject(raw) {
         };
         item[group.dateField] = /^\d{4}-\d{2}-\d{2}$/.test(i[group.dateField]) ? i[group.dateField] : "";
         if (group.hasFile) item.fileUrl = "";
+        if (item.completed && /^\d{4}-\d{2}-\d{2}$/.test(i.completedAt)) item.completedAt = i.completedAt;
+        if (group.key === "assignments") item.status = statusOf(i);
         return item;
       });
   });
@@ -530,6 +594,45 @@ function highlightHTML(title, entry, text, cls) {
     </div>`;
 }
 
+function weekHTML(week) {
+  const max = Math.max(1, ...week.days.map((day) => day.count));
+  const diff = week.thisWeek - week.lastWeek;
+  let deltaText = "لسه مفيش إنجاز في الأسبوعين";
+  let deltaCls = "";
+  if (week.thisWeek || week.lastWeek) {
+    if (diff > 0) {
+      deltaText = `▲ زيادة ${diff} عن الأسبوع اللي فات`;
+      deltaCls = "up";
+    } else if (diff < 0) {
+      deltaText = `▼ أقل بـ ${-diff} عن الأسبوع اللي فات`;
+      deltaCls = "down";
+    } else {
+      deltaText = "زي الأسبوع اللي فات";
+    }
+  }
+
+  const cols = week.days
+    .map(
+      (day) => `
+        <div class="week-col ${day.d === 0 ? "today" : ""}">
+          <b>${day.count}</b>
+          <div class="week-bar"><span style="height:${Math.round((day.count / max) * 100)}%"></span></div>
+          <small>${esc(day.label)}</small>
+        </div>`
+    )
+    .join("");
+
+  return `
+    <div class="card week-card">
+      <div class="week-top">
+        <div class="week-num"><strong>${week.thisWeek}</strong><span>الأسبوع ده</span></div>
+        <div class="week-num"><strong>${week.lastWeek}</strong><span>الأسبوع اللي فات</span></div>
+      </div>
+      <div class="week-delta ${deltaCls}">${deltaText}</div>
+      <div class="week-chart">${cols}</div>
+    </div>`;
+}
+
 function renderStats() {
   const s = computeStats();
 
@@ -579,6 +682,7 @@ function renderStats() {
       <div class="highlight-grid">
         ${highlightHTML("🏆 أكتر مادة متقدم فيها", s.best, s.best ? `${s.best.progress}% مكتمل` : "", "good")}
         ${highlightHTML("⚠️ أكتر مادة متأخر فيها", s.mostLate, s.mostLate ? `${s.mostLate.overdue} عنصر متأخر` : "", "warn")}
+        ${highlightHTML("📉 أقل مادة إنجازًا", s.least, s.least ? `${s.least.progress}% مكتمل` : "", "warn")}
       </div>
     </section>
 
@@ -595,6 +699,11 @@ function renderStats() {
     <section>
       <div class="section-head"><h2>تقدم كل مادة</h2></div>
       <div class="card stat-rows">${rows}</div>
+    </section>
+
+    <section>
+      <div class="section-head"><h2>إنجاز الأسبوع</h2></div>
+      ${weekHTML(s.week)}
     </section>`;
 }
 
@@ -658,6 +767,13 @@ function itemHTML(item, group) {
   const date = item[group.dateField];
   const info = date && !item.completed ? dueInfo(date) : null;
   const ref = `${group.key}:${item.id}`;
+  const status = group.key === "assignments" ? statusOf(item) : "pending";
+  const statusPill =
+    status === "graded"
+      ? `<span class="pill ok">✅ اتصحح</span>`
+      : status === "submitted"
+        ? `<span class="pill">📤 اتسلم</span>`
+        : "";
   return `
     <div class="item ${item.completed ? "done" : ""}">
       <input type="checkbox" data-toggle="${ref}" ${item.completed ? "checked" : ""} aria-label="تم" />
@@ -665,6 +781,7 @@ function itemHTML(item, group) {
         <span class="item-title">${esc(item.title)}</span>
         ${item.notes ? `<span class="item-sub">${esc(item.notes)}</span>` : ""}
       </button>
+      ${statusPill}
       ${info ? `<span class="pill ${info.cls}">${esc(info.text)}</span>` : ""}
       <span class="item-go">‹</span>
     </div>`;
@@ -763,6 +880,17 @@ function formViewHTML() {
     (g) => `<option value="${g.key}" ${g.key === group.key ? "selected" : ""}>${g.label}</option>`
   ).join("");
 
+  const currentStatus = item ? statusOf(item) : "pending";
+  const statusField =
+    group.key === "assignments"
+      ? `<label class="field">
+        <span>الحالة</span>
+        <select name="status">${STATUSES.map(
+          (st) => `<option value="${st.key}" ${st.key === currentStatus ? "selected" : ""}>${st.label}</option>`
+        ).join("")}</select>
+      </label>`
+      : "";
+
   return `
     <form class="modal-content" id="itemForm">
       <div class="modal-head">
@@ -784,6 +912,8 @@ function formViewHTML() {
         <span>${group.dateLabel} (اختياري)</span>
         <input type="date" name="date" value="${item ? esc(item[group.dateField] || "") : ""}" />
       </label>
+
+      ${statusField}
 
       <label class="field">
         <span>ملاحظات (اختياري)</span>
@@ -1121,6 +1251,7 @@ document.addEventListener("submit", (e) => {
     title,
     date: String(form.get("date") || ""),
     notes: String(form.get("notes") || "").trim(),
+    status: form.get("status") ? String(form.get("status")) : "",
   };
 
   if (editing) {
