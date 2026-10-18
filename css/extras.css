@@ -1,0 +1,68 @@
+.icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+  gap: 10px;
+  padding: 4px 2px;
+}
+
+.icon-opt {
+  position: relative;
+  cursor: pointer;
+}
+
+.icon-opt input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.icon-opt span {
+  display: grid;
+  place-items: center;
+  height: 48px;
+  border-radius: 14px;
+  background: #fff;
+  border: 2px solid var(--line);
+  font-size: 1.4rem;
+  transition: 0.15s;
+}
+
+.icon-opt input:checked + span {
+  border-color: var(--purple-2);
+  background: color-mix(in srgb, var(--purple) 10%, #fff);
+  transform: scale(1.06);
+}
+
+.search-chips {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 6px 6px 8px;
+  position: sticky;
+  top: 0;
+  background: #fff;
+  scrollbar-width: none;
+  z-index: 1;
+}
+
+.search-chips::-webkit-scrollbar {
+  display: none;
+}
+
+.chip {
+  flex: none;
+  border: none;
+  background: var(--bg);
+  color: var(--muted);
+  border-radius: 99px;
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.chip.active {
+  background: var(--purple);
+  color: #fff;
+}

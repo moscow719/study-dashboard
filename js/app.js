@@ -1,5 +1,7 @@
 const ICONS = ["📘", "⚡", "💻", "🔬", "📊", "📚"];
 
+const ICON_CHOICES = ["📘", "⚡", "💻", "🔬", "📊", "📚", "🌐", "🧮", "🔧", "📡", "🧠", "🎨", "⚙️", "🖥️", "📐", "🧪"];
+
 const COLORS = ["#7c4dff", "#ff9800", "#2f80ed", "#2fb67c", "#ec407a", "#f5b400", "#00acc1", "#ef5350"];
 
 const GROUPS = [
@@ -57,6 +59,7 @@ let modalTab = GROUPS[0].key;
 let modalStatus = "all";
 let editing = null;
 let editingSubjectId = null;
+let searchSubjectId = "all";
 
 const $ = (id) => document.getElementById(id);
 
@@ -249,6 +252,7 @@ function searchAll(query) {
   if (!q) return [];
   const results = [];
   subjects.forEach((subject) => {
+    if (searchSubjectId !== "all" && subject.id !== searchSubjectId) return;
     if (subject.name.toLowerCase().includes(q)) {
       results.push({ kind: "subject", subject });
     }
@@ -270,6 +274,7 @@ function addSubject(data) {
     termId: data.termId,
     name: data.name,
     color: data.color,
+    icon: ICON_CHOICES.includes(data.icon) ? data.icon : "",
     lectures: [],
     sheets: [],
     assignments: [],
@@ -283,6 +288,7 @@ function editSubject(id, data) {
   if (!subject) return;
   subject.name = data.name;
   subject.color = data.color;
+  subject.icon = ICON_CHOICES.includes(data.icon) ? data.icon : subject.icon || "";
   subject.termId = data.termId;
   saveData();
 }
@@ -369,6 +375,7 @@ function normalizeSubject(raw) {
     termId: raw.termId,
     name: raw.name,
     color: /^#[0-9a-fA-F]{6}$/.test(raw.color) ? raw.color : COLORS[0],
+    icon: ICON_CHOICES.includes(raw.icon) ? raw.icon : "",
   };
 
   GROUPS.forEach((group) => {
@@ -457,7 +464,7 @@ function renderSubjects() {
     .map((s) => {
       const items = allItems(s);
       const done = items.filter((i) => i.completed).length;
-      const icon = ICONS[subjects.indexOf(s) % ICONS.length];
+      const icon = s.icon || ICONS[subjects.indexOf(s) % ICONS.length];
       return `
         <div class="subject-card" style="--c:${s.color}" data-subject="${s.id}">
           <div class="subject-icon">${icon}</div>
@@ -741,11 +748,22 @@ function renderSearch() {
     return;
   }
 
+  const chips = `
+    <div class="search-chips">
+      <button type="button" class="chip ${searchSubjectId === "all" ? "active" : ""}" data-search-filter="all">كل المواد</button>
+      ${subjects
+        .map(
+          (s) =>
+            `<button type="button" class="chip ${searchSubjectId === s.id ? "active" : ""}" data-search-filter="${s.id}">${esc(s.name)}</button>`
+        )
+        .join("")}
+    </div>`;
+
   const results = searchAll(query);
   if (!results.length) {
-    searchPanel.innerHTML = `<div class="no-results">مفيش نتائج</div>`;
+    searchPanel.innerHTML = chips + `<div class="no-results">مفيش نتائج</div>`;
   } else {
-    searchPanel.innerHTML = results
+    searchPanel.innerHTML = chips + results
       .map((r) => {
         const title = r.kind === "subject" ? r.subject.name : r.item.title;
         const sub =
@@ -771,6 +789,7 @@ function hideSearch() {
 }
 
 function clearSearch() {
+  searchSubjectId = "all";
   $("searchInput").value = "";
   searchPanel.innerHTML = "";
   hideSearch();
@@ -965,6 +984,20 @@ function subjectFormHTML() {
   const color = subject ? subject.color : COLORS[subjects.length % COLORS.length];
   const termId = subject ? subject.termId : currentTermId;
   const palette = COLORS.includes(color) ? COLORS : [color, ...COLORS];
+  const currentIcon = subject
+    ? subject.icon || ICONS[subjects.indexOf(subject) % ICONS.length]
+    : ICON_CHOICES[subjects.length % ICON_CHOICES.length];
+  const iconList = ICON_CHOICES.includes(currentIcon) ? ICON_CHOICES : [currentIcon, ...ICON_CHOICES];
+
+  const iconOptions = iconList
+    .map(
+      (ic) => `
+        <label class="icon-opt">
+          <input type="radio" name="icon" value="${ic}" ${ic === currentIcon ? "checked" : ""} />
+          <span>${ic}</span>
+        </label>`
+    )
+    .join("");
 
   const swatches = palette
     .map(
@@ -995,6 +1028,11 @@ function subjectFormHTML() {
       <div class="group-field">
         <span>اللون</span>
         <div class="swatches">${swatches}</div>
+      </div>
+
+      <div class="group-field">
+        <span>الأيقونة</span>
+        <div class="icon-grid">${iconOptions}</div>
       </div>
 
       <label class="field">
@@ -1109,6 +1147,12 @@ document.addEventListener("click", (e) => {
       return $("upcomingList").scrollIntoView({ behavior: "smooth", block: "center" });
     }
     return;
+  }
+
+  const chipBtn = e.target.closest("[data-search-filter]");
+  if (chipBtn) {
+    searchSubjectId = chipBtn.dataset.searchFilter;
+    return renderSearch();
   }
 
   const resultBtn = e.target.closest("[data-result]");
@@ -1245,6 +1289,7 @@ document.addEventListener("submit", (e) => {
     const data = {
       name,
       color: String(form.get("color") || COLORS[0]),
+      icon: String(form.get("icon") || ""),
       termId: String(form.get("termId")),
     };
 
